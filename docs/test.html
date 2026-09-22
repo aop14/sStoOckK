@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>連線測試</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body style="background:#0a0e14; color:#e6edf3; font-family:sans-serif; padding:20px;">
+
+<h2>Supabase 連線測試</h2>
+<pre id="output" style="white-space:pre-wrap; background:#10151f; padding:12px; border-radius:8px;">測試中...</pre>
+
+<script>
+const SUPABASE_URL = "https://zfvowdwhwoticdjelzdl.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpmdm93ZHdod290aWNkamVsemRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNTE1NTUsImV4cCI6MjEwNTYyNzU1NX0._o7csMpXSFhyJd0lWW6bnM-GznWUvmVfZsQQCnCWw_I";
+
+const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const out = document.getElementById("output");
+
+(async function() {
+  let log = "1. supabase-js 有載入成功 ✅\n";
+  log += "2. 開始查詢 watchlist 表...\n";
+  out.textContent = log;
+
+  const { data: watchlist, error: err1 } = await client
+    .from("watchlist")
+    .select("*");
+
+  if (err1) {
+    log += "❌ watchlist 查詢失敗:\n" + JSON.stringify(err1, null, 2);
+    out.textContent = log;
+    return;
+  }
+  log += `✅ watchlist 查到 ${watchlist.length} 筆:\n` + JSON.stringify(watchlist, null, 2) + "\n\n";
+  out.textContent = log;
+
+  log += "3. 開始查詢 daily_data 表(最新10筆)...\n";
+  out.textContent = log;
+
+  const { data: daily, error: err2 } = await client
+    .from("daily_data")
+    .select("*")
+    .order("date", { ascending: false })
+    .limit(10);
+
+  if (err2) {
+    log += "❌ daily_data 查詢失敗:\n" + JSON.stringify(err2, null, 2);
+    out.textContent = log;
+    return;
+  }
+  log += `✅ daily_data 查到 ${daily.length} 筆:\n` + JSON.stringify(daily, null, 2);
+  out.textContent = log;
+})();
+</script>
+</body>
+</html>
