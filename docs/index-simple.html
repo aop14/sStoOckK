@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三大法人籌碼追蹤</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  body {
+    margin: 0;
+    background: #0a0e14;
+    color: #e6edf3;
+    font-family: 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+    padding: 16px;
+  }
+  h1 {
+    font-size: 1.3rem;
+    background: linear-gradient(90deg, #00e5c7, #7c5cff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  select {
+    background: #10151f;
+    border: 1px solid #1e2733;
+    color: #e6edf3;
+    padding: 8px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+  .panel {
+    background: #10151f;
+    border: 1px solid #1e2733;
+    border-radius: 12px;
+    padding: 14px;
+  }
+  #status { color: #7d8ba1; font-size: 0.85rem; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h1>⚡ 三大法人籌碼追蹤(簡化版)</h1>
+
+<select id="stockSelect"><option>載入中...</option></select>
+<div id="status"></div>
+
+<div class="panel">
+  <canvas id="priceChart" height="180"></canvas>
+</div>
+
+<script>
+const SUPABASE_URL = "https://zfvowdwhwoticdjelzdl.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpmdm93ZHdod290aWNkamVsemRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNTE1NTUsImV4cCI6MjEwNTYyNzU1NX0._o7csMpXSFhyJd0lWW6bnM-GznWUvmVfZsQQCnCWw_I";
+
+const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const statusEl = document.getElementById("status");
+let chart;
+
+async function loadWatchlist() {
+  const { data, error } = await client
+    .from("watchlist")
+    .select("symbol, name")
+    .eq("is_active", true)
+    .order("symbol");
+
+  const select = document.getElementById("stockSelect");
+  select.innerHTML = "";
+
+  if (error || !data || data.length === 0) {
+    select.innerHTML = "<option>沒有自選股</option>";
+    statusEl.textContent = error ? "讀取 watchlist 失敗: " + error.message : "watchlist 是空的";
+    return null;
+  }
+
+  data.forEach(row => {
+    const opt = document.createElement("option");
+    opt.value = row.symbol;
+    opt.textContent = row.name ? `${row.symbol} ${row.name}` : row.symbol;
+    select.appendChild(opt);
+  });
+
+  select.addEventListener("change", () => loadPriceChart(select.value));
+  return data[0].symbol;
+}
+
+async function loadPriceChart(symbol) {
+  statusEl.textContent = `讀取 ${symbol} 的資料中...`;
+
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const sinceStr = since.toISOString().slice(0, 10);
+
+  const { data, error } = await client
+    .from("daily_data")
+    .select("date, close_price")
+    .eq("symbol", symbol)
+    .eq("market", "TW")
+    .gte("date", sinceStr)
+    .order("date", { ascending: true });
+
+  if (error) {
+    statusEl.textContent = "讀取 daily_data 失敗: " + error.message;
+    return;
+  }
+  if (!data || data.length === 0) {
+    statusEl.textContent = `${symbol} 這 30 天內沒有資料`;
+    return;
+  }
+
+  statusEl.textContent = `${symbol} 共 ${data.length} 筆資料`;
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("priceChart"), {
+    type: "line",
+    data: {
+      labels: data.map(r => r.date),
+      datasets: [{
+        label: "收盤價",
+        data: data.map(r => r.close_price),
+        borderColor: "#00e5c7",
+        backgroundColor: "rgba(0,229,199,0.12)",
+        fill: true,
+        tension: 0.25,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#7d8ba1" }, grid: { color: "rgba(255,255,255,0.06)" } },
+        y: { ticks: { color: "#7d8ba1" }, grid: { color: "rgba(255,255,255,0.06)" } },
+      },
+    },
+  });
+}
+
+(async function init() {
+  const firstSymbol = await loadWatchlist();
+  if (firstSymbol) await loadPriceChart(firstSymbol);
+})();
+</script>
+</body>
+</html>
