@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三大法人籌碼追蹤</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --panel: #10151f;
+    --panel-border: #1e2733;
+    --text: #e6edf3;
+    --muted: #7d8ba1;
+    --accent: #00e5c7;
+    --accent2: #7c5cff;
+    --red: #ff4d6d;
+    --green: #00e5a0;
+    --font: 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 20% -10%, #10203a 0%, var(--bg) 45%);
+    color: var(--text);
+    font-family: var(--font);
+    padding: 16px;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+    padding-top: max(16px, env(safe-area-inset-top, 16px));
+  }
+  h1 {
+    font-size: 1.3rem;
+    margin: 0 0 16px;
+    letter-spacing: 0.5px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-block;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  select, .range-btn {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .range-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 8px rgba(0,229,199,0.3);
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .card .label { color: var(--muted); font-size: 0.75rem; margin-bottom: 6px; }
+  .card .value { font-size: 1.3rem; font-weight: 600; }
+  .up { color: var(--red); }   /* 台股慣例:紅漲綠跌 */
+  .down { color: var(--green); }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin: 0 0 10px;
+    font-weight: 500;
+  }
+  canvas { max-width: 100%; }
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 40px 0;
+  }
+  .legend {
+    display: flex; gap: 14px; font-size: 0.75rem; color: var(--muted); margin-bottom: 6px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+
+<h1>⚡ 三大法人籌碼追蹤</h1>
+
+<div class="controls">
+  <select id="stockSelect"><option>載入中...</option></select>
+  <div>
+    <button class="range-btn" data-days="7">7天</button>
+    <button class="range-btn active" data-days="30">30天</button>
+    <button class="range-btn" data-days="90">90天</button>
+  </div>
+</div>
+
+<div class="cards" id="summaryCards"></div>
+
+<div class="panel">
+  <h2>股價走勢</h2>
+  <canvas id="priceChart" height="180"></canvas>
+</div>
+
+<div class="panel">
+  <h2>三大法人買賣超(張)</h2>
+  <div class="legend">
+    <span><i class="dot" style="background:#00e5c7"></i>外資</span>
+    <span><i class="dot" style="background:#7c5cff"></i>投信</span>
+    <span><i class="dot" style="background:#ff9f43"></i>自營商</span>
+  </div>
+  <canvas id="instChart" height="180"></canvas>
+</div>
+
+<script>
+// ==== 請填入你自己的 Supabase 專案設定(在 Supabase 後台的 Project Settings > API 取得) ====
+const SUPABASE_URL = "YOUR_SUPABASE_URL";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"; // 只用 anon key,不要放 service_role key!
+// ============================================================================
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentSymbol = null;
+let currentDays = 30;
+let priceChart, instChart;
+
+async function loadWatchlist() {
+  const { data, error } = await supabase
+    .from("watchlist")
+    .select("symbol, name, market")
+    .eq("is_active", true)
+    .order("symbol");
+
+  const select = document.getElementById("stockSelect");
+  select.innerHTML = "";
+
+  if (error || !data || data.length === 0) {
+    select.innerHTML = "<option>尚無自選股,請先在 watchlist 表加入股票</option>";
+    return;
+  }
+
+  data.forEach(row => {
+    const opt = document.createElement("option");
+    opt.value = row.symbol;
+    opt.textContent = row.name ? `${row.symbol} ${row.name}` : row.symbol;
+    select.appendChild(opt);
+  });
+
+  currentSymbol = data[0].symbol;
+  select.value = currentSymbol;
+  select.addEventListener("change", () => {
+    currentSymbol = select.value;
+    loadData();
+  });
+}
+
+document.querySelectorAll(".range-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentDays = parseInt(btn.dataset.days, 10);
+    loadData();
+  });
+});
+
+function fmtNum(n) {
+  if (n === null || n === undefined) return "--";
+  return Number(n).toLocaleString();
+}
+
+function renderSummary(rows) {
+  const cardsEl = document.getElementById("summaryCards");
+  cardsEl.innerHTML = "";
+  if (!rows.length) {
+    cardsEl.innerHTML = `<div class="empty">這個區間沒有資料</div>`;
+    return;
+  }
+  const latest = rows[rows.length - 1];
+
+  // 連續買/賣超天數(以合計買賣超判斷,從最新日往回算)
+  let streak = 0;
+  let streakDir = null;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const net = rows[i].institutional_net;
+    if (net === null || net === undefined) break;
+    const dir = net >= 0 ? "buy" : "sell";
+    if (streakDir === null) { streakDir = dir; streak = 1; }
+    else if (dir === streakDir) { streak++; }
+    else break;
+  }
+
+  // 近5日合計買賣超
+  const last5 = rows.slice(-5);
+  const sum5 = last5.reduce((acc, r) => acc + (r.institutional_net || 0), 0);
+
+  const changeClass = (latest.change_percent || 0) >= 0 ? "up" : "down";
+  const streakClass = streakDir === "buy" ? "up" : "down";
+  const sum5Class = sum5 >= 0 ? "up" : "down";
+
+  const cards = [
+    { label: "最新收盤", value: fmtNum(latest.close_price), extra: `<span class="${changeClass}">${latest.change_percent ?? "--"}%</span>` },
+    { label: "連續" + (streakDir === "buy" ? "買超" : streakDir === "sell" ? "賣超" : "—") + "天數", value: streak ? `${streak} 天` : "--", cls: streakClass },
+    { label: "近5日合計買賣超", value: fmtNum(sum5) + " 張", cls: sum5Class },
+    { label: "今日合計買賣超", value: fmtNum(latest.institutional_net) + " 張", cls: (latest.institutional_net || 0) >= 0 ? "up" : "down" },
+  ];
+
+  cards.forEach(c => {
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = `<div class="label">${c.label}</div><div class="value ${c.cls || ''}">${c.value} ${c.extra || ''}</div>`;
+    cardsEl.appendChild(div);
+  });
+}
+
+function renderCharts(rows) {
+  const labels = rows.map(r => r.date);
+  const closePrices = rows.map(r => r.close_price);
+  const foreign = rows.map(r => r.foreign_net);
+  const trust = rows.map(r => r.trust_net);
+  const dealer = rows.map(r => r.dealer_net);
+
+  const commonGrid = { color: "rgba(255,255,255,0.06)" };
+  const commonTicks = { color: "#7d8ba1" };
+
+  if (priceChart) priceChart.destroy();
+  priceChart = new Chart(document.getElementById("priceChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "收盤價",
+        data: closePrices,
+        borderColor: "#00e5c7",
+        backgroundColor: "rgba(0,229,199,0.12)",
+        tension: 0.25,
+        fill: true,
+        pointRadius: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: commonGrid, ticks: { ...commonTicks, maxTicksLimit: 8 } },
+        y: { grid: commonGrid, ticks: commonTicks },
+      },
+    },
+  });
+
+  if (instChart) instChart.destroy();
+  instChart = new Chart(document.getElementById("instChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "外資", data: foreign, backgroundColor: "#00e5c7" },
+        { label: "投信", data: trust, backgroundColor: "#7c5cff" },
+        { label: "自營商", data: dealer, backgroundColor: "#ff9f43" },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: commonGrid, ticks: { ...commonTicks, maxTicksLimit: 8 } },
+        y: { grid: commonGrid, ticks: commonTicks },
+      },
+    },
+  });
+}
+
+async function loadData() {
+  if (!currentSymbol) return;
+  const since = new Date();
+  since.setDate(since.getDate() - currentDays);
+  const sinceStr = since.toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from("daily_data")
+    .select("date, close_price, change_percent, foreign_net, trust_net, dealer_net, institutional_net")
+    .eq("symbol", currentSymbol)
+    .eq("market", "TW")
+    .gte("date", sinceStr)
+    .order("date", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    document.getElementById("summaryCards").innerHTML = `<div class="empty">讀取資料失敗</div>`;
+    return;
+  }
+
+  renderSummary(data || []);
+  renderCharts(data || []);
+}
+
+(async function init() {
+  await loadWatchlist();
+  await loadData();
+})();
+</script>
+</body>
+</html>
