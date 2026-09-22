@@ -1,0 +1,26 @@
+name: Fetch TW institutional data
+
+on:
+  schedule:
+    # UTC 07:30 = 台北時間 15:30,週一到週五(台股收盤且三大法人資料已更新後)
+    - cron: "30 7 * * 1-5"
+  workflow_dispatch: {}   # 也可以在 GitHub Actions 頁面手動觸發,方便測試
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run fetch script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python fetch_tw_data.py
