@@ -21,6 +21,7 @@ from fetch_tw_data import (
     get_active_tw_symbols,
     fetch_t86,
     fetch_mi_index,
+    fetch_mi_qfiis,
     upsert_daily_data,
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY,
@@ -69,6 +70,8 @@ def main():
         time.sleep(DELAY_SECONDS)
         mi = fetch_mi_index(date_str)
         time.sleep(DELAY_SECONDS)
+        qfiis = fetch_mi_qfiis(date_str)
+        time.sleep(DELAY_SECONDS)
 
         if not t86 and not mi:
             print(f"  {date_str} 無資料(非交易日),跳過")
@@ -87,10 +90,16 @@ def main():
                 "close_price": price.get("close_price"),
                 "change_percent": price.get("change_percent"),
                 "volume": price.get("volume"),
+                "open_price": price.get("open_price"),
+                "high_price": price.get("high_price"),
+                "low_price": price.get("low_price"),
+                "pe_ratio": price.get("pe_ratio"),
                 "foreign_net": inst.get("foreign_net"),
                 "trust_net": inst.get("trust_net"),
                 "dealer_net": inst.get("dealer_net"),
                 "institutional_net": inst.get("institutional_net"),
+                "foreign_holding_ratio": qfiis.get(symbol, {}).get("holding_ratio"),
+                "foreign_investable_ratio": qfiis.get(symbol, {}).get("investable_ratio"),
             })
 
         if rows:

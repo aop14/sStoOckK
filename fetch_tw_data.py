@@ -21,6 +21,7 @@ import requests
 
 TWSE_T86_URL = "https://www.twse.com.tw/rwd/zh/fund/T86"
 TWSE_MI_INDEX_URL = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+TWSE_MI_QFIIS_URL = "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
@@ -110,6 +111,10 @@ def fetch_mi_index(date_str):
         idx_close = fields.index("收盤價")
         idx_diff = fields.index("漲跌價差") if "漲跌價差" in fields else None
         idx_vol = fields.index("成交股數") if "成交股數" in fields else None
+        idx_open = fields.index("開盤價") if "開盤價" in fields else None
+        idx_high = fields.index("最高價") if "最高價" in fields else None
+        idx_low = fields.index("最低價") if "最低價" in fields else None
+        idx_pe = fields.index("本益比") if "本益比" in fields else None
 
         for row in table.get("data", []):
             code = row[idx_code].strip()
@@ -126,7 +131,59 @@ def fetch_mi_index(date_str):
                 "close_price": close,
                 "change_percent": change_percent,
                 "volume": int(volume) if volume is not None else None,
+                "open_price": to_num(row[idx_open]) if idx_open is not None else None,
+                "high_price": to_num(row[idx_high]) if idx_high is not None else None,
+                "low_price": to_num(row[idx_low]) if idx_low is not None else None,
+                "pe_ratio": to_num(row[idx_pe]) if idx_pe is not None else None,
             }
+    return result
+
+
+def fetch_mi_qfiis(date_str):
+    """外資及陸資持股比率 + 尚可投資比率
+    回傳 {股票代號: {holding_ratio, investable_ratio}}
+
+    欄位名稱證交所偶爾會微調,所以用「欄位名稱包含關鍵字」這種方式動態找欄位,
+    而不是寫死欄位索引,比較不怕格式變動。
+    """
+    params = {"response": "json", "date": date_str, "selectType": "ALLBUT0999"}
+    resp = requests.get(TWSE_MI_QFIIS_URL, params=params, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if data.get("stat") != "OK":
+        print(f"[MI_QFIIS] {date_str} 無資料(可能是非交易日): {data.get('stat')}")
+        return {}
+
+    result = {}
+    tables = data.get("tables") or [data]
+    for table in tables:
+        fields = table.get("fields") or []
+        code_field_candidates = [f for f in fields if f in ("證券代號", "代號")]
+        holding_field_candidates = [
+            f for f in fields
+            if "持股比率" in f and "上限" not in f and "尚可" not in f
+        ]
+        investable_field_candidates = [
+            f for f in fields
+            if "尚可" in f and "比率" in f
+        ]
+        if not code_field_candidates or not holding_field_candidates:
+            continue
+
+        idx_code = fields.index(code_field_candidates[0])
+        idx_holding = fields.index(holding_field_candidates[0])
+        idx_investable = fields.index(investable_field_candidates[0]) if investable_field_candidates else None
+
+        for row in table.get("data", []):
+            code = row[idx_code].strip()
+            holding = to_num(row[idx_holding])
+            investable = to_num(row[idx_investable]) if idx_investable is not None else None
+            if holding is not None:
+                result[code] = {
+                    "holding_ratio": holding,
+                    "investable_ratio": investable,
+                }
     return result
 
 
@@ -159,6 +216,7 @@ def main():
 
     t86 = fetch_t86(date_str)
     mi = fetch_mi_index(date_str)
+    qfiis = fetch_mi_qfiis(date_str)
 
     if not t86 and not mi:
         print(f"{date_str} 兩個來源都沒有資料,可能是假日或尚未收盤更新,結束。")
@@ -178,10 +236,16 @@ def main():
             "close_price": price.get("close_price"),
             "change_percent": price.get("change_percent"),
             "volume": price.get("volume"),
+            "open_price": price.get("open_price"),
+            "high_price": price.get("high_price"),
+            "low_price": price.get("low_price"),
+            "pe_ratio": price.get("pe_ratio"),
             "foreign_net": inst.get("foreign_net"),
             "trust_net": inst.get("trust_net"),
             "dealer_net": inst.get("dealer_net"),
             "institutional_net": inst.get("institutional_net"),
+            "foreign_holding_ratio": qfiis.get(symbol, {}).get("holding_ratio"),
+            "foreign_investable_ratio": qfiis.get(symbol, {}).get("investable_ratio"),
         })
 
     upsert_daily_data(rows)
