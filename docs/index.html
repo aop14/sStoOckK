@@ -28,13 +28,25 @@
   }
   h1 {
     font-size: 1.3rem;
-    margin: 0 0 16px;
+    margin: 0 0 12px;
     background: linear-gradient(90deg, var(--accent), var(--accent2));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
     display: inline-block;
   }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tab-btn {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--muted);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .tab-btn.active { border-color: var(--accent); color: var(--accent); }
+
   .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
   select, .range-btn {
     background: var(--panel);
@@ -63,12 +75,17 @@
   .snap-card .label { color: var(--muted); font-size: 0.75rem; margin-bottom: 6px; }
   .snap-card .value { font-size: 1.2rem; font-weight: 600; }
 
-  h2.section-title {
-    font-size: 0.95rem;
-    color: var(--muted);
-    margin: 20px 0 10px;
-    font-weight: 500;
+  h2.section-title { font-size: 0.95rem; color: var(--muted); margin: 20px 0 10px; font-weight: 500; }
+
+  .reversal-banner {
+    background: rgba(255,159,67,0.1);
+    border: 1px solid var(--amber);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 0.85rem;
   }
+  .reversal-banner .title { color: var(--amber); font-weight: 600; margin-bottom: 6px; }
 
   .verdict {
     background: var(--panel);
@@ -77,48 +94,89 @@
     padding: 16px;
     margin-bottom: 12px;
   }
-  .verdict-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-  }
+  .verdict-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .verdict-head .title { font-size: 1rem; font-weight: 600; }
-  .tag {
-    font-size: 0.75rem;
-    padding: 3px 10px;
-    border-radius: 999px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .tag.bull { background: rgba(255,77,109,0.15); color: var(--red); }   /* 台股慣例紅漲=偏多 */
-  .tag.bear { background: rgba(0,229,160,0.15); color: var(--green); } /* 綠跌=偏空 */
+  .tag { font-size: 0.75rem; padding: 3px 10px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+  .tag.bull { background: rgba(255,77,109,0.15); color: var(--red); }
+  .tag.bear { background: rgba(0,229,160,0.15); color: var(--green); }
   .tag.neutral { background: rgba(255,159,67,0.15); color: var(--amber); }
   .verdict p { margin: 0; color: var(--text); line-height: 1.6; font-size: 0.9rem; }
 
   .up { color: var(--red); }
   .down { color: var(--green); }
   .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+
+  /* 總覽頁 */
+  .index-banner {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .ov-row {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .ov-row:active { border-color: var(--accent); }
+  .ov-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .ov-name { font-weight: 600; }
+  .ov-price { font-size: 0.9rem; }
+  .ov-dots { display: flex; gap: 6px; }
+  .dot-badge {
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 700;
+    color: #0a0e14;
+  }
+  .dot-badge.bull { background: var(--red); }
+  .dot-badge.bear { background: var(--green); }
+  .dot-badge.neutral { background: var(--amber); }
 </style>
 </head>
 <body>
 
 <h1>⚡ 三大法人籌碼追蹤</h1>
 
-<div class="controls">
-  <select id="stockSelect"><option>載入中...</option></select>
-  <div>
-    <button class="range-btn" data-days="7">7天</button>
-    <button class="range-btn active" data-days="30">30天</button>
-    <button class="range-btn" data-days="90">90天</button>
-  </div>
+<div class="tabs">
+  <button class="tab-btn active" data-tab="overview">總覽</button>
+  <button class="tab-btn" data-tab="detail">個股</button>
 </div>
-<div id="status"></div>
 
-<div class="snapshot" id="snapshotCards"></div>
+<!-- ===== 總覽分頁 ===== -->
+<div id="tab-overview">
+  <div class="index-banner" id="indexBanner">大盤資料讀取中...</div>
+  <div id="overviewList"></div>
+</div>
 
-<h2 class="section-title">分析結論</h2>
-<div id="verdicts"></div>
+<!-- ===== 個股分頁 ===== -->
+<div id="tab-detail" style="display:none;">
+  <div class="controls">
+    <select id="stockSelect"><option>載入中...</option></select>
+    <div>
+      <button class="range-btn" data-days="7">7天</button>
+      <button class="range-btn active" data-days="30">30天</button>
+      <button class="range-btn" data-days="90">90天</button>
+    </div>
+  </div>
+  <div id="status"></div>
+
+  <div class="snapshot" id="snapshotCards"></div>
+
+  <div id="reversalBanner"></div>
+
+  <h2 class="section-title">分析結論</h2>
+  <div id="verdicts"></div>
+</div>
 
 <script>
 const SUPABASE_URL = "https://zfvowdwhwoticdjelzdl.supabase.co";
@@ -129,13 +187,17 @@ const statusEl = document.getElementById("status");
 
 let currentSymbol = null;
 let currentDays = 30;
+let watchlistCache = [];
 
 function fmtNum(n, digits = 0) {
   if (n === null || n === undefined) return "--";
   return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
-// 計算某欄位從最新一天往回算的連續同方向天數(以 >=0 / <0 判斷方向)
+const tagLabel = { bull: "偏多", bear: "偏空", neutral: "中性" };
+const verdictLabel = { chip: "籌碼面", tech: "技術面", val: "估值面", foreign: "外資動向", index: "大盤對照" };
+
+// ---- 共用計算函式 ----
 function classifyStreak(rows, field) {
   let streak = 0, dir = null;
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -162,7 +224,131 @@ function dirLabel(dir) {
   return dir === "buy" ? "買超" : dir === "sell" ? "賣超" : "—";
 }
 
-// ---- 載入自選股清單 ----
+// 計算 4 項結論(籌碼/技術/估值/外資),回傳 {chip, tech, val, foreign} 各為 {tag, title, text}
+function computeVerdictSet(rows) {
+  if (!rows.length) return null;
+  const latest = rows[rows.length - 1];
+
+  const foreignS = classifyStreak(rows, "foreign_net");
+  const trustS = classifyStreak(rows, "trust_net");
+  let chip = {
+    tag: "neutral", title: "籌碼面:方向不一致",
+    text: `外資近期${dirLabel(foreignS.dir)}(連續 ${foreignS.streak} 天),投信近期${dirLabel(trustS.dir)}(連續 ${trustS.streak} 天),兩者方向不一致,籌碼訊號不明確。`,
+  };
+  if (foreignS.dir && foreignS.dir === trustS.dir) {
+    if (foreignS.dir === "buy") {
+      chip = { tag: "bull", title: "籌碼面:外資投信同步買超",
+        text: `外資與投信同步買超,外資連續買超 ${foreignS.streak} 天,投信連續買超 ${trustS.streak} 天,籌碼面偏多。` };
+    } else {
+      chip = { tag: "bear", title: "籌碼面:外資投信同步賣超",
+        text: `外資與投信同步賣超,外資連續賣超 ${foreignS.streak} 天,投信連續賣超 ${trustS.streak} 天,籌碼面偏空。` };
+    }
+  }
+
+  const closes = rows.map(r => r.close_price);
+  const ma20Series = computeMA(closes, 20);
+  const latestMA20 = ma20Series[ma20Series.length - 1];
+  let tech = { tag: "neutral", title: "技術面:資料不足", text: "區間內資料不足 20 天,無法計算月線乖離率。" };
+  if (latestMA20 !== null && latestMA20 !== undefined && latestMA20 !== 0) {
+    const dev = ((latest.close_price - latestMA20) / latestMA20) * 100;
+    const devAbs = Math.abs(dev);
+    if (dev >= 0) {
+      tech = {
+        tag: devAbs >= 5 ? "neutral" : "bull",
+        title: devAbs >= 5 ? "技術面:站上月線但乖離過大" : "技術面:股價站穩月線之上",
+        text: `收盤價 ${fmtNum(latest.close_price, 2)} 在月線(20日均價 ${fmtNum(latestMA20, 2)})之上,乖離率 +${dev.toFixed(2)}%。`
+          + (devAbs >= 5 ? " 乖離幅度較大,短線可能偏熱,留意拉回風險。" : " 乖離幅度在合理範圍內。"),
+      };
+    } else {
+      tech = {
+        tag: devAbs >= 5 ? "bear" : "neutral",
+        title: devAbs >= 5 ? "技術面:跌破月線且乖離過大" : "技術面:股價在月線之下",
+        text: `收盤價 ${fmtNum(latest.close_price, 2)} 在月線(20日均價 ${fmtNum(latestMA20, 2)})之下,乖離率 ${dev.toFixed(2)}%。`
+          + (devAbs >= 5 ? " 乖離幅度較大,短線可能偏弱,留意是否有超跌反彈機會。" : " 乖離幅度在合理範圍內。"),
+      };
+    }
+  }
+
+  const peValues = rows.map(r => r.pe_ratio).filter(v => v !== null && v !== undefined);
+  let val = { tag: "neutral", title: "估值面:資料不足", text: "這個區間內沒有本益比資料。" };
+  if (peValues.length >= 3 && latest.pe_ratio !== null && latest.pe_ratio !== undefined) {
+    const minPE = Math.min(...peValues);
+    const maxPE = Math.max(...peValues);
+    const avgPE = peValues.reduce((a, b) => a + b, 0) / peValues.length;
+    let position = "中間";
+    if (maxPE > minPE) {
+      const pct = (latest.pe_ratio - minPE) / (maxPE - minPE);
+      position = pct <= 0.33 ? "相對低檔" : pct >= 0.67 ? "相對高檔" : "區間中段";
+    }
+    val = {
+      tag: position === "相對低檔" ? "bear" : position === "相對高檔" ? "bull" : "neutral",
+      title: `估值面:本益比處於區間${position}`,
+      text: `目前本益比 ${latest.pe_ratio.toFixed(2)} 倍,區間內落在 ${minPE.toFixed(2)}~${maxPE.toFixed(2)} 倍之間(平均 ${avgPE.toFixed(2)} 倍),屬於${position}。`,
+    };
+  }
+
+  const holdingSeries = rows.map(r => r.foreign_holding_ratio).filter(v => v !== null && v !== undefined);
+  let foreign = { tag: "neutral", title: "外資動向:資料不足", text: "這個區間內沒有外資持股比率資料。" };
+  if (holdingSeries.length >= 2) {
+    const first = holdingSeries[0];
+    const last = holdingSeries[holdingSeries.length - 1];
+    const diff = last - first;
+    const investable = latest.foreign_investable_ratio;
+    foreign = {
+      tag: diff > 0.1 ? "bull" : diff < -0.1 ? "bear" : "neutral",
+      title: diff > 0.1 ? "外資動向:持股比率上升" : diff < -0.1 ? "外資動向:持股比率下降" : "外資動向:持股比率持平",
+      text: `外資持股比率從 ${first.toFixed(2)}% 變化到 ${last.toFixed(2)}%(區間內${diff >= 0 ? "上升" : "下降"} ${Math.abs(diff).toFixed(2)} 個百分點)。`
+        + (investable !== null && investable !== undefined ? ` 目前尚可投資空間約 ${investable.toFixed(2)}%。` : ""),
+    };
+  }
+
+  return { chip, tech, val, foreign };
+}
+
+// 大盤對照結論
+function computeIndexVerdict(latestRow, indexRow) {
+  if (!indexRow || latestRow.change_percent === null || latestRow.change_percent === undefined) {
+    return { tag: "neutral", title: "大盤對照:資料不足", text: "沒有足夠的大盤或個股漲跌幅資料可比較。" };
+  }
+  const diff = latestRow.change_percent - indexRow.change_percent;
+  const idxDir = indexRow.change_percent >= 0 ? "上漲" : "下跌";
+  const stockDir = latestRow.change_percent >= 0 ? "上漲" : "下跌";
+  let text = `大盤今日${idxDir} ${Math.abs(indexRow.change_percent).toFixed(2)}%,這檔股票${stockDir} ${Math.abs(latestRow.change_percent).toFixed(2)}%,`;
+  let tag = "neutral", title = "大盤對照:表現與大盤同步";
+  if (diff > 0.5) {
+    tag = "bull"; title = "大盤對照:優於大盤";
+    text += `相對大盤強 ${diff.toFixed(2)} 個百分點,走勢優於大盤。`;
+  } else if (diff < -0.5) {
+    tag = "bear"; title = "大盤對照:弱於大盤";
+    text += `相對大盤弱 ${Math.abs(diff).toFixed(2)} 個百分點,走勢弱於大盤。`;
+  } else {
+    text += `跟大盤走勢相近,沒有明顯的相對強弱。`;
+  }
+  return { tag, title, text };
+}
+
+// ---- 分頁切換 ----
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const tab = btn.dataset.tab;
+    document.getElementById("tab-overview").style.display = tab === "overview" ? "block" : "none";
+    document.getElementById("tab-detail").style.display = tab === "detail" ? "block" : "none";
+  });
+});
+
+function switchToDetail(symbol) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelector('.tab-btn[data-tab="detail"]').classList.add("active");
+  document.getElementById("tab-overview").style.display = "none";
+  document.getElementById("tab-detail").style.display = "block";
+  currentSymbol = symbol;
+  document.getElementById("stockSelect").value = symbol;
+  loadDetail();
+}
+
+// ---- 載入自選股清單(個股分頁用) ----
 async function loadWatchlist() {
   const { data, error } = await client
     .from("watchlist")
@@ -175,8 +361,7 @@ async function loadWatchlist() {
 
   if (error || !data || data.length === 0) {
     select.innerHTML = "<option>沒有自選股</option>";
-    statusEl.textContent = error ? "讀取 watchlist 失敗: " + error.message : "watchlist 是空的";
-    return null;
+    return [];
   }
 
   data.forEach(row => {
@@ -190,9 +375,10 @@ async function loadWatchlist() {
   select.value = currentSymbol;
   select.addEventListener("change", () => {
     currentSymbol = select.value;
-    loadData();
+    loadDetail();
   });
-  return currentSymbol;
+  watchlistCache = data;
+  return data;
 }
 
 document.querySelectorAll(".range-btn").forEach(btn => {
@@ -200,11 +386,11 @@ document.querySelectorAll(".range-btn").forEach(btn => {
     document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     currentDays = parseInt(btn.dataset.days, 10);
-    loadData();
+    loadDetail();
   });
 });
 
-// ---- 今日快照卡片 ----
+// ---- 個股分頁:快照卡片 ----
 function renderSnapshot(rows) {
   const el = document.getElementById("snapshotCards");
   el.innerHTML = "";
@@ -216,18 +402,9 @@ function renderSnapshot(rows) {
   const changeClass = (latest.change_percent || 0) >= 0 ? "up" : "down";
 
   const cards = [
-    {
-      label: "收盤價",
-      value: fmtNum(latest.close_price, 2) + ` <span class="${changeClass}">${latest.change_percent ?? "--"}%</span>`,
-    },
-    {
-      label: "今日高/低",
-      value: fmtNum(latest.high_price, 2) + " / " + fmtNum(latest.low_price, 2),
-    },
-    {
-      label: "本益比",
-      value: latest.pe_ratio !== null && latest.pe_ratio !== undefined ? fmtNum(latest.pe_ratio, 2) + " 倍" : "--",
-    },
+    { label: "收盤價", value: fmtNum(latest.close_price, 2) + ` <span class="${changeClass}">${latest.change_percent ?? "--"}%</span>` },
+    { label: "今日高/低", value: fmtNum(latest.high_price, 2) + " / " + fmtNum(latest.low_price, 2) },
+    { label: "本益比", value: latest.pe_ratio !== null && latest.pe_ratio !== undefined ? fmtNum(latest.pe_ratio, 2) + " 倍" : "--" },
     {
       label: "外資持股 / 尚可投資",
       value: (latest.foreign_holding_ratio !== null && latest.foreign_holding_ratio !== undefined ? latest.foreign_holding_ratio.toFixed(2) + "%" : "--")
@@ -243,91 +420,35 @@ function renderSnapshot(rows) {
   });
 }
 
-// ---- 分析結論 ----
-function renderVerdicts(rows) {
+// ---- 個股分頁:趨勢反轉提醒 ----
+function renderReversalBanner(currentSet, previousSet) {
+  const el = document.getElementById("reversalBanner");
+  el.innerHTML = "";
+  if (!currentSet || !previousSet) return;
+
+  const changed = [];
+  ["chip", "tech", "val", "foreign"].forEach(key => {
+    if (currentSet[key].tag !== previousSet[key].tag) {
+      changed.push(`${verdictLabel[key]}:${tagLabel[previousSet[key].tag]} → ${tagLabel[currentSet[key].tag]}`);
+    }
+  });
+
+  if (changed.length === 0) return;
+
+  const div = document.createElement("div");
+  div.className = "reversal-banner";
+  div.innerHTML = `<div class="title">🔄 較前一交易日結論有變化</div>${changed.join("<br>")}`;
+  el.appendChild(div);
+}
+
+// ---- 個股分頁:結論卡片 ----
+function renderVerdicts(verdictSet, indexVerdict) {
   const el = document.getElementById("verdicts");
   el.innerHTML = "";
-  if (!rows.length) return;
+  if (!verdictSet) return;
 
-  const latest = rows[rows.length - 1];
-
-  // 1. 籌碼面:外資 vs 投信方向是否一致
-  const foreignS = classifyStreak(rows, "foreign_net");
-  const trustS = classifyStreak(rows, "trust_net");
-  let chipTag = "neutral", chipTitle = "籌碼面:方向不一致";
-  let chipText = `外資近期${dirLabel(foreignS.dir)}(連續 ${foreignS.streak} 天),投信近期${dirLabel(trustS.dir)}(連續 ${trustS.streak} 天),兩者方向不一致,籌碼訊號不明確,建議搭配其他面向判斷。`;
-  if (foreignS.dir && foreignS.dir === trustS.dir) {
-    if (foreignS.dir === "buy") {
-      chipTag = "bull"; chipTitle = "籌碼面:外資投信同步買超";
-      chipText = `外資與投信同步買超,外資連續買超 ${foreignS.streak} 天,投信連續買超 ${trustS.streak} 天,籌碼面偏多。`;
-    } else {
-      chipTag = "bear"; chipTitle = "籌碼面:外資投信同步賣超";
-      chipText = `外資與投信同步賣超,外資連續賣超 ${foreignS.streak} 天,投信連續賣超 ${trustS.streak} 天,籌碼面偏空。`;
-    }
-  }
-
-  // 2. 技術面:月線乖離
-  const closes = rows.map(r => r.close_price);
-  const ma20Series = computeMA(closes, 20);
-  const latestMA20 = ma20Series[ma20Series.length - 1];
-  let techTag = "neutral", techTitle = "技術面:資料不足", techText = "區間內資料不足 20 天,無法計算月線乖離率。";
-  if (latestMA20 !== null && latestMA20 !== undefined && latestMA20 !== 0) {
-    const dev = ((latest.close_price - latestMA20) / latestMA20) * 100;
-    const devAbs = Math.abs(dev);
-    if (dev >= 0) {
-      techTag = devAbs >= 5 ? "neutral" : "bull";
-      techTitle = devAbs >= 5 ? "技術面:站上月線但乖離過大" : "技術面:股價站穩月線之上";
-      techText = `收盤價 ${fmtNum(latest.close_price, 2)} 在月線(20日均價 ${fmtNum(latestMA20, 2)})之上,乖離率 +${dev.toFixed(2)}%。`
-        + (devAbs >= 5 ? " 乖離幅度較大,短線可能偏熱,留意拉回風險。" : " 乖離幅度在合理範圍內。");
-    } else {
-      techTag = devAbs >= 5 ? "bear" : "neutral";
-      techTitle = devAbs >= 5 ? "技術面:跌破月線且乖離過大" : "技術面:股價在月線之下";
-      techText = `收盤價 ${fmtNum(latest.close_price, 2)} 在月線(20日均價 ${fmtNum(latestMA20, 2)})之下,乖離率 ${dev.toFixed(2)}%。`
-        + (devAbs >= 5 ? " 乖離幅度較大,短線可能偏弱,留意是否有超跌反彈機會。" : " 乖離幅度在合理範圍內。");
-    }
-  }
-
-  // 3. 估值面:本益比在區間內的相對位置
-  const peValues = rows.map(r => r.pe_ratio).filter(v => v !== null && v !== undefined);
-  let valTag = "neutral", valTitle = "估值面:資料不足", valText = "這個區間內沒有本益比資料。";
-  if (peValues.length >= 3 && latest.pe_ratio !== null && latest.pe_ratio !== undefined) {
-    const minPE = Math.min(...peValues);
-    const maxPE = Math.max(...peValues);
-    const avgPE = peValues.reduce((a, b) => a + b, 0) / peValues.length;
-    let position = "中間";
-    if (maxPE > minPE) {
-      const pct = (latest.pe_ratio - minPE) / (maxPE - minPE);
-      position = pct <= 0.33 ? "相對低檔" : pct >= 0.67 ? "相對高檔" : "區間中段";
-    }
-    valTag = position === "相對低檔" ? "bear" : position === "相對高檔" ? "bull" : "neutral";
-    valTitle = `估值面:本益比處於區間${position}`;
-    valText = `目前本益比 ${latest.pe_ratio.toFixed(2)} 倍,區間內落在 ${minPE.toFixed(2)}~${maxPE.toFixed(2)} 倍之間(平均 ${avgPE.toFixed(2)} 倍),屬於${position}。`;
-  }
-
-  // 4. 外資動向:持股比率變化趨勢
-  const holdingSeries = rows.map(r => r.foreign_holding_ratio).filter(v => v !== null && v !== undefined);
-  let fTag = "neutral", fTitle = "外資動向:資料不足", fText = "這個區間內沒有外資持股比率資料。";
-  if (holdingSeries.length >= 2) {
-    const first = holdingSeries[0];
-    const last = holdingSeries[holdingSeries.length - 1];
-    const diff = last - first;
-    const investable = latest.foreign_investable_ratio;
-    fTag = diff > 0.1 ? "bull" : diff < -0.1 ? "bear" : "neutral";
-    fTitle = diff > 0.1 ? "外資動向:持股比率上升" : diff < -0.1 ? "外資動向:持股比率下降" : "外資動向:持股比率持平";
-    fText = `外資持股比率從 ${first.toFixed(2)}% 變化到 ${last.toFixed(2)}%(區間內${diff >= 0 ? "上升" : "下降"} ${Math.abs(diff).toFixed(2)} 個百分點)。`
-      + (investable !== null && investable !== undefined ? ` 目前尚可投資空間約 ${investable.toFixed(2)}%。` : "");
-  }
-
-  const verdicts = [
-    { tag: chipTag, title: chipTitle, text: chipText },
-    { tag: techTag, title: techTitle, text: techText },
-    { tag: valTag, title: valTitle, text: valText },
-    { tag: fTag, title: fTitle, text: fText },
-  ];
-
-  const tagLabel = { bull: "偏多", bear: "偏空", neutral: "中性" };
-
-  verdicts.forEach(v => {
+  const order = [verdictSet.chip, verdictSet.tech, verdictSet.val, verdictSet.foreign, indexVerdict];
+  order.forEach(v => {
     const div = document.createElement("div");
     div.className = "verdict";
     div.innerHTML = `
@@ -341,7 +462,17 @@ function renderVerdicts(rows) {
   });
 }
 
-async function loadData() {
+async function getLatestIndexRow() {
+  const { data, error } = await client
+    .from("market_index")
+    .select("date, close_index, change_percent")
+    .order("date", { ascending: false })
+    .limit(1);
+  if (error || !data || data.length === 0) return null;
+  return data[0];
+}
+
+async function loadDetail() {
   if (!currentSymbol) return;
   statusEl.textContent = `讀取 ${currentSymbol} 的資料中...`;
 
@@ -362,14 +493,104 @@ async function loadData() {
     return;
   }
 
-  statusEl.textContent = `${currentSymbol} 共 ${data.length} 筆資料`;
-  renderSnapshot(data || []);
-  renderVerdicts(data || []);
+  const rows = data || [];
+  statusEl.textContent = `${currentSymbol} 共 ${rows.length} 筆資料`;
+
+  renderSnapshot(rows);
+
+  const currentSet = computeVerdictSet(rows);
+  const previousSet = rows.length >= 2 ? computeVerdictSet(rows.slice(0, -1)) : null;
+  renderReversalBanner(currentSet, previousSet);
+
+  const indexRow = await getLatestIndexRow();
+  const indexVerdict = rows.length ? computeIndexVerdict(rows[rows.length - 1], indexRow) : null;
+  renderVerdicts(currentSet, indexVerdict);
+}
+
+// ---- 總覽分頁 ----
+async function loadOverview() {
+  const banner = document.getElementById("indexBanner");
+  const listEl = document.getElementById("overviewList");
+  listEl.innerHTML = `<div class="empty">讀取中...</div>`;
+
+  const indexRow = await getLatestIndexRow();
+  if (indexRow) {
+    const cls = (indexRow.change_percent || 0) >= 0 ? "up" : "down";
+    banner.innerHTML = `<span>加權指數(${indexRow.date})</span><span class="${cls}">${fmtNum(indexRow.close_index, 0)} (${indexRow.change_percent ?? "--"}%)</span>`;
+  } else {
+    banner.textContent = "尚無大盤指數資料";
+  }
+
+  if (watchlistCache.length === 0) {
+    watchlistCache = await loadWatchlist();
+  }
+  if (watchlistCache.length === 0) {
+    listEl.innerHTML = `<div class="empty">watchlist 是空的,請先加入股票</div>`;
+    return;
+  }
+
+  const symbols = watchlistCache.map(w => w.symbol);
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const sinceStr = since.toISOString().slice(0, 10);
+
+  const { data, error } = await client
+    .from("daily_data")
+    .select("symbol, date, close_price, change_percent, pe_ratio, foreign_net, trust_net, dealer_net, institutional_net, foreign_holding_ratio, foreign_investable_ratio")
+    .in("symbol", symbols)
+    .eq("market", "TW")
+    .gte("date", sinceStr)
+    .order("date", { ascending: true });
+
+  if (error) {
+    listEl.innerHTML = `<div class="empty">讀取失敗: ${error.message}</div>`;
+    return;
+  }
+
+  const grouped = {};
+  (data || []).forEach(row => {
+    if (!grouped[row.symbol]) grouped[row.symbol] = [];
+    grouped[row.symbol].push(row);
+  });
+
+  listEl.innerHTML = "";
+  watchlistCache.forEach(w => {
+    const rows = grouped[w.symbol] || [];
+    const div = document.createElement("div");
+    div.className = "ov-row";
+    div.addEventListener("click", () => switchToDetail(w.symbol));
+
+    if (!rows.length) {
+      div.innerHTML = `<div class="ov-top"><span class="ov-name">${w.symbol} ${w.name || ""}</span><span class="empty">無資料</span></div>`;
+      listEl.appendChild(div);
+      return;
+    }
+
+    const latest = rows[rows.length - 1];
+    const cls = (latest.change_percent || 0) >= 0 ? "up" : "down";
+    const vs = computeVerdictSet(rows);
+    const idxV = computeIndexVerdict(latest, indexRow);
+
+    div.innerHTML = `
+      <div class="ov-top">
+        <span class="ov-name">${w.symbol} ${w.name || ""}</span>
+        <span class="ov-price ${cls}">${fmtNum(latest.close_price, 2)} (${latest.change_percent ?? "--"}%)</span>
+      </div>
+      <div class="ov-dots">
+        <span class="dot-badge ${vs.chip.tag}" title="${vs.chip.title}">籌</span>
+        <span class="dot-badge ${vs.tech.tag}" title="${vs.tech.title}">技</span>
+        <span class="dot-badge ${vs.val.tag}" title="${vs.val.title}">值</span>
+        <span class="dot-badge ${vs.foreign.tag}" title="${vs.foreign.title}">外</span>
+        <span class="dot-badge ${idxV.tag}" title="${idxV.title}">盤</span>
+      </div>
+    `;
+    listEl.appendChild(div);
+  });
 }
 
 (async function init() {
   await loadWatchlist();
-  await loadData();
+  await loadOverview();
 })();
 </script>
 </body>
