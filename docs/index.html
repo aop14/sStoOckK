@@ -34,19 +34,42 @@
     border: 1px solid #1e2733;
     border-radius: 12px;
     padding: 14px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 0.9rem;
+    color: #7d8ba1;
+    margin: 0 0 10px;
+    font-weight: 500;
   }
   #status { color: #7d8ba1; font-size: 0.85rem; margin-bottom: 10px; }
+  .legend {
+    display: flex; gap: 14px; font-size: 0.75rem; color: #7d8ba1; margin-bottom: 6px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 </style>
 </head>
 <body>
 
-<h1>⚡ 三大法人籌碼追蹤(簡化版)</h1>
+<h1>⚡ 三大法人籌碼追蹤</h1>
 
 <select id="stockSelect"><option>載入中...</option></select>
 <div id="status"></div>
 
 <div class="panel">
+  <h2>股價走勢</h2>
   <canvas id="priceChart" height="180"></canvas>
+</div>
+
+<div class="panel">
+  <h2>三大法人買賣超(張)</h2>
+  <div class="legend">
+    <span><i class="dot" style="background:#00e5c7"></i>外資</span>
+    <span><i class="dot" style="background:#7c5cff"></i>投信</span>
+    <span><i class="dot" style="background:#ff9f43"></i>自營商</span>
+  </div>
+  <canvas id="instChart" height="180"></canvas>
 </div>
 
 <script>
@@ -55,7 +78,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const statusEl = document.getElementById("status");
-let chart;
+let priceChart, instChart;
 
 async function loadWatchlist() {
   const { data, error } = await client
@@ -80,11 +103,11 @@ async function loadWatchlist() {
     select.appendChild(opt);
   });
 
-  select.addEventListener("change", () => loadPriceChart(select.value));
+  select.addEventListener("change", () => loadData(select.value));
   return data[0].symbol;
 }
 
-async function loadPriceChart(symbol) {
+async function loadData(symbol) {
   statusEl.textContent = `讀取 ${symbol} 的資料中...`;
 
   const since = new Date();
@@ -93,7 +116,7 @@ async function loadPriceChart(symbol) {
 
   const { data, error } = await client
     .from("daily_data")
-    .select("date, close_price")
+    .select("date, close_price, foreign_net, trust_net, dealer_net")
     .eq("symbol", symbol)
     .eq("market", "TW")
     .gte("date", sinceStr)
@@ -110,11 +133,15 @@ async function loadPriceChart(symbol) {
 
   statusEl.textContent = `${symbol} 共 ${data.length} 筆資料`;
 
-  if (chart) chart.destroy();
-  chart = new Chart(document.getElementById("priceChart"), {
+  const labels = data.map(r => r.date);
+  const commonGrid = { color: "rgba(255,255,255,0.06)" };
+  const commonTicks = { color: "#7d8ba1" };
+
+  if (priceChart) priceChart.destroy();
+  priceChart = new Chart(document.getElementById("priceChart"), {
     type: "line",
     data: {
-      labels: data.map(r => r.date),
+      labels,
       datasets: [{
         label: "收盤價",
         data: data.map(r => r.close_price),
@@ -128,8 +155,29 @@ async function loadPriceChart(symbol) {
       responsive: true,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: "#7d8ba1" }, grid: { color: "rgba(255,255,255,0.06)" } },
-        y: { ticks: { color: "#7d8ba1" }, grid: { color: "rgba(255,255,255,0.06)" } },
+        x: { ticks: commonTicks, grid: commonGrid },
+        y: { ticks: commonTicks, grid: commonGrid },
+      },
+    },
+  });
+
+  if (instChart) instChart.destroy();
+  instChart = new Chart(document.getElementById("instChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "外資", data: data.map(r => r.foreign_net), backgroundColor: "#00e5c7" },
+        { label: "投信", data: data.map(r => r.trust_net), backgroundColor: "#7c5cff" },
+        { label: "自營商", data: data.map(r => r.dealer_net), backgroundColor: "#ff9f43" },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: commonTicks, grid: commonGrid },
+        y: { ticks: commonTicks, grid: commonGrid },
       },
     },
   });
@@ -137,7 +185,7 @@ async function loadPriceChart(symbol) {
 
 (async function init() {
   const firstSymbol = await loadWatchlist();
-  if (firstSymbol) await loadPriceChart(firstSymbol);
+  if (firstSymbol) await loadData(firstSymbol);
 })();
 </script>
 </body>
