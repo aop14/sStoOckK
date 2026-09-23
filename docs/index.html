@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>三大法人籌碼追蹤</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #0a0e14;
@@ -17,6 +16,7 @@
     --accent2: #7c5cff;
     --red: #ff4d6d;
     --green: #00e5a0;
+    --amber: #ff9f43;
   }
   * { box-sizing: border-box; }
   body {
@@ -35,12 +35,7 @@
     color: transparent;
     display: inline-block;
   }
-  .controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 10px;
-  }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
   select, .range-btn {
     background: var(--panel);
     border: 1px solid var(--panel-border);
@@ -50,46 +45,60 @@
     font-size: 0.9rem;
     cursor: pointer;
   }
-  .range-btn.active {
-    border-color: var(--accent);
-    color: var(--accent);
-    box-shadow: 0 0 8px rgba(0,229,199,0.3);
-  }
+  .range-btn.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 8px rgba(0,229,199,0.3); }
   #status { color: var(--muted); font-size: 0.8rem; margin-bottom: 14px; }
-  .cards {
+
+  .snapshot {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 10px;
     margin-bottom: 18px;
   }
-  .card {
+  .snap-card {
     background: var(--panel);
     border: 1px solid var(--panel-border);
     border-radius: 12px;
     padding: 14px;
   }
-  .card .label { color: var(--muted); font-size: 0.75rem; margin-bottom: 6px; }
-  .card .value { font-size: 1.3rem; font-weight: 600; }
-  .up { color: var(--red); }   /* 台股慣例:紅漲綠跌 */
-  .down { color: var(--green); }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 12px;
-    padding: 14px;
-    margin-bottom: 16px;
-  }
-  .panel h2 {
-    font-size: 0.9rem;
+  .snap-card .label { color: var(--muted); font-size: 0.75rem; margin-bottom: 6px; }
+  .snap-card .value { font-size: 1.2rem; font-weight: 600; }
+
+  h2.section-title {
+    font-size: 0.95rem;
     color: var(--muted);
-    margin: 0 0 10px;
+    margin: 20px 0 10px;
     font-weight: 500;
   }
-  canvas { max-width: 100%; }
+
+  .verdict {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .verdict-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .verdict-head .title { font-size: 1rem; font-weight: 600; }
+  .tag {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .tag.bull { background: rgba(255,77,109,0.15); color: var(--red); }   /* 台股慣例紅漲=偏多 */
+  .tag.bear { background: rgba(0,229,160,0.15); color: var(--green); } /* 綠跌=偏空 */
+  .tag.neutral { background: rgba(255,159,67,0.15); color: var(--amber); }
+  .verdict p { margin: 0; color: var(--text); line-height: 1.6; font-size: 0.9rem; }
+
+  .up { color: var(--red); }
+  .down { color: var(--green); }
   .empty { color: var(--muted); text-align: center; padding: 40px 0; }
-  .legend { display: flex; gap: 14px; font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; }
-  .legend span { display: inline-flex; align-items: center; gap: 4px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 </style>
 </head>
 <body>
@@ -106,22 +115,10 @@
 </div>
 <div id="status"></div>
 
-<div class="cards" id="summaryCards"></div>
+<div class="snapshot" id="snapshotCards"></div>
 
-<div class="panel">
-  <h2>股價走勢</h2>
-  <canvas id="priceChart" height="180"></canvas>
-</div>
-
-<div class="panel">
-  <h2>三大法人買賣超(張)</h2>
-  <div class="legend">
-    <span><i class="dot" style="background:#00e5c7"></i>外資</span>
-    <span><i class="dot" style="background:#7c5cff"></i>投信</span>
-    <span><i class="dot" style="background:#ff9f43"></i>自營商</span>
-  </div>
-  <canvas id="instChart" height="180"></canvas>
-</div>
+<h2 class="section-title">分析結論</h2>
+<div id="verdicts"></div>
 
 <script>
 const SUPABASE_URL = "https://zfvowdwhwoticdjelzdl.supabase.co";
@@ -132,8 +129,40 @@ const statusEl = document.getElementById("status");
 
 let currentSymbol = null;
 let currentDays = 30;
-let priceChart, instChart;
 
+function fmtNum(n, digits = 0) {
+  if (n === null || n === undefined) return "--";
+  return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
+}
+
+// 計算某欄位從最新一天往回算的連續同方向天數(以 >=0 / <0 判斷方向)
+function classifyStreak(rows, field) {
+  let streak = 0, dir = null;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const v = rows[i][field];
+    if (v === null || v === undefined) break;
+    const d = v >= 0 ? "buy" : "sell";
+    if (dir === null) { dir = d; streak = 1; }
+    else if (d === dir) { streak++; }
+    else break;
+  }
+  return { dir, streak };
+}
+
+function computeMA(values, window) {
+  return values.map((_, i) => {
+    if (i < window - 1) return null;
+    const slice = values.slice(i - window + 1, i + 1);
+    if (slice.some(v => v === null || v === undefined)) return null;
+    return slice.reduce((a, b) => a + b, 0) / window;
+  });
+}
+
+function dirLabel(dir) {
+  return dir === "buy" ? "買超" : dir === "sell" ? "賣超" : "—";
+}
+
+// ---- 載入自選股清單 ----
 async function loadWatchlist() {
   const { data, error } = await client
     .from("watchlist")
@@ -175,102 +204,140 @@ document.querySelectorAll(".range-btn").forEach(btn => {
   });
 });
 
-function fmtNum(n) {
-  if (n === null || n === undefined) return "--";
-  return Number(n).toLocaleString();
-}
-
-function renderSummary(rows) {
-  const cardsEl = document.getElementById("summaryCards");
-  cardsEl.innerHTML = "";
+// ---- 今日快照卡片 ----
+function renderSnapshot(rows) {
+  const el = document.getElementById("snapshotCards");
+  el.innerHTML = "";
   if (!rows.length) {
-    cardsEl.innerHTML = `<div class="empty">這個區間沒有資料</div>`;
+    el.innerHTML = `<div class="empty">這個區間沒有資料</div>`;
     return;
   }
   const latest = rows[rows.length - 1];
-
-  let streak = 0;
-  let streakDir = null;
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const net = rows[i].institutional_net;
-    if (net === null || net === undefined) break;
-    const dir = net >= 0 ? "buy" : "sell";
-    if (streakDir === null) { streakDir = dir; streak = 1; }
-    else if (dir === streakDir) { streak++; }
-    else break;
-  }
-
-  const last5 = rows.slice(-5);
-  const sum5 = last5.reduce((acc, r) => acc + (r.institutional_net || 0), 0);
-
   const changeClass = (latest.change_percent || 0) >= 0 ? "up" : "down";
-  const streakClass = streakDir === "buy" ? "up" : "down";
-  const sum5Class = sum5 >= 0 ? "up" : "down";
 
   const cards = [
-    { label: "最新收盤", value: fmtNum(latest.close_price), extra: `<span class="${changeClass}">${latest.change_percent ?? "--"}%</span>` },
-    { label: "連續" + (streakDir === "buy" ? "買超" : streakDir === "sell" ? "賣超" : "—") + "天數", value: streak ? `${streak} 天` : "--", cls: streakClass },
-    { label: "近5日合計買賣超", value: fmtNum(sum5) + " 張", cls: sum5Class },
-    { label: "今日合計買賣超", value: fmtNum(latest.institutional_net) + " 張", cls: (latest.institutional_net || 0) >= 0 ? "up" : "down" },
+    {
+      label: "收盤價",
+      value: fmtNum(latest.close_price, 2) + ` <span class="${changeClass}">${latest.change_percent ?? "--"}%</span>`,
+    },
+    {
+      label: "今日高/低",
+      value: fmtNum(latest.high_price, 2) + " / " + fmtNum(latest.low_price, 2),
+    },
+    {
+      label: "本益比",
+      value: latest.pe_ratio !== null && latest.pe_ratio !== undefined ? fmtNum(latest.pe_ratio, 2) + " 倍" : "--",
+    },
+    {
+      label: "外資持股 / 尚可投資",
+      value: (latest.foreign_holding_ratio !== null && latest.foreign_holding_ratio !== undefined ? latest.foreign_holding_ratio.toFixed(2) + "%" : "--")
+        + " / " + (latest.foreign_investable_ratio !== null && latest.foreign_investable_ratio !== undefined ? latest.foreign_investable_ratio.toFixed(2) + "%" : "--"),
+    },
   ];
 
   cards.forEach(c => {
     const div = document.createElement("div");
-    div.className = "card";
-    div.innerHTML = `<div class="label">${c.label}</div><div class="value ${c.cls || ''}">${c.value} ${c.extra || ''}</div>`;
-    cardsEl.appendChild(div);
+    div.className = "snap-card";
+    div.innerHTML = `<div class="label">${c.label}</div><div class="value">${c.value}</div>`;
+    el.appendChild(div);
   });
 }
 
-function renderCharts(rows) {
-  const labels = rows.map(r => r.date);
-  const commonGrid = { color: "rgba(255,255,255,0.06)" };
-  const commonTicks = { color: "#7d8ba1" };
+// ---- 分析結論 ----
+function renderVerdicts(rows) {
+  const el = document.getElementById("verdicts");
+  el.innerHTML = "";
+  if (!rows.length) return;
 
-  if (priceChart) priceChart.destroy();
-  priceChart = new Chart(document.getElementById("priceChart"), {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{
-        label: "收盤價",
-        data: rows.map(r => r.close_price),
-        borderColor: "#00e5c7",
-        backgroundColor: "rgba(0,229,199,0.12)",
-        tension: 0.25,
-        fill: true,
-        pointRadius: 0,
-      }],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { grid: commonGrid, ticks: { ...commonTicks, maxTicksLimit: 8 } },
-        y: { grid: commonGrid, ticks: commonTicks },
-      },
-    },
-  });
+  const latest = rows[rows.length - 1];
 
-  if (instChart) instChart.destroy();
-  instChart = new Chart(document.getElementById("instChart"), {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        { label: "外資", data: rows.map(r => r.foreign_net), backgroundColor: "#00e5c7" },
-        { label: "投信", data: rows.map(r => r.trust_net), backgroundColor: "#7c5cff" },
-        { label: "自營商", data: rows.map(r => r.dealer_net), backgroundColor: "#ff9f43" },
-      ],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { grid: commonGrid, ticks: { ...commonTicks, maxTicksLimit: 8 } },
-        y: { grid: commonGrid, ticks: commonTicks },
-      },
-    },
+  // 1. 籌碼面:外資 vs 投信方向是否一致
+  const foreignS = classifyStreak(rows, "foreign_net");
+  const trustS = classifyStreak(rows, "trust_net");
+  let chipTag = "neutral", chipTitle = "籌碼面:方向不一致";
+  let chipText = `外資近期${dirLabel(foreignS.dir)}(連續 ${foreignS.streak} 天),投信近期${dirLabel(trustS.dir)}(連續 ${trustS.streak} 天),兩者方向不一致,籌碼訊號不明確,建議搭配其他面向判斷。`;
+  if (foreignS.dir && foreignS.dir === trustS.dir) {
+    if (foreignS.dir === "buy") {
+      chipTag = "bull"; chipTitle = "籌碼面:外資投信同步買超";
+      chipText = `外資與投信同步買超,外資連續買超 ${foreignS.streak} 天,投信連續買超 ${trustS.streak} 天,籌碼面偏多。`;
+    } else {
+      chipTag = "bear"; chipTitle = "籌碼面:外資投信同步賣超";
+      chipText = `外資與投信同步賣超,外資連續賣超 ${foreignS.streak} 天,投信連續賣超 ${trustS.streak} 天,籌碼面偏空。`;
+    }
+  }
+
+  // 2. 技術面:月線乖離
+  const closes = rows.map(r => r.close_price);
+  const ma20Series = computeMA(closes, 20);
+  const latestMA20 = ma20Series[ma20Series.length - 1];
+  let techTag = "neutral", techTitle = "技術面:資料不足", techText = "區間內資料不足 20 天,無法計算月線乖離率。";
+  if (latestMA20 !== null && latestMA20 !== undefined && latestMA20 !== 0) {
+    const dev = ((latest.close_price - latestMA20) / latestMA20) * 100;
+    const devAbs = Math.abs(dev);
+    if (dev >= 0) {
+      techTag = devAbs >= 5 ? "neutral" : "bull";
+      techTitle = devAbs >= 5 ? "技術面:站上月線但乖離過大" : "技術面:股價站穩月線之上";
+      techText = `收盤價 ${fmtNum(latest.close_price, 2)} 在月線(20日均價 ${fmtNum(latestMA20, 2)})之上,乖離率 +${dev.toFixed(2)}%。`
+        + (devAbs >= 5 ? " 乖離幅度較大,短線可能偏熱,留意拉回風險。" : " 乖離幅度在合理範圍內。");
+    } else {
+      techTag = devAbs >= 5 ? "bear" : "neutral";
+      techTitle = devAbs >= 5 ? "技術面:跌破月線且乖離過大" : "技術面:股價在月線之下";
+      techText = `收盤價 ${fmtNum(latest.close_price, 2)} 在月線(20日均價 ${fmtNum(latestMA20, 2)})之下,乖離率 ${dev.toFixed(2)}%。`
+        + (devAbs >= 5 ? " 乖離幅度較大,短線可能偏弱,留意是否有超跌反彈機會。" : " 乖離幅度在合理範圍內。");
+    }
+  }
+
+  // 3. 估值面:本益比在區間內的相對位置
+  const peValues = rows.map(r => r.pe_ratio).filter(v => v !== null && v !== undefined);
+  let valTag = "neutral", valTitle = "估值面:資料不足", valText = "這個區間內沒有本益比資料。";
+  if (peValues.length >= 3 && latest.pe_ratio !== null && latest.pe_ratio !== undefined) {
+    const minPE = Math.min(...peValues);
+    const maxPE = Math.max(...peValues);
+    const avgPE = peValues.reduce((a, b) => a + b, 0) / peValues.length;
+    let position = "中間";
+    if (maxPE > minPE) {
+      const pct = (latest.pe_ratio - minPE) / (maxPE - minPE);
+      position = pct <= 0.33 ? "相對低檔" : pct >= 0.67 ? "相對高檔" : "區間中段";
+    }
+    valTag = position === "相對低檔" ? "bear" : position === "相對高檔" ? "bull" : "neutral";
+    valTitle = `估值面:本益比處於區間${position}`;
+    valText = `目前本益比 ${latest.pe_ratio.toFixed(2)} 倍,區間內落在 ${minPE.toFixed(2)}~${maxPE.toFixed(2)} 倍之間(平均 ${avgPE.toFixed(2)} 倍),屬於${position}。`;
+  }
+
+  // 4. 外資動向:持股比率變化趨勢
+  const holdingSeries = rows.map(r => r.foreign_holding_ratio).filter(v => v !== null && v !== undefined);
+  let fTag = "neutral", fTitle = "外資動向:資料不足", fText = "這個區間內沒有外資持股比率資料。";
+  if (holdingSeries.length >= 2) {
+    const first = holdingSeries[0];
+    const last = holdingSeries[holdingSeries.length - 1];
+    const diff = last - first;
+    const investable = latest.foreign_investable_ratio;
+    fTag = diff > 0.1 ? "bull" : diff < -0.1 ? "bear" : "neutral";
+    fTitle = diff > 0.1 ? "外資動向:持股比率上升" : diff < -0.1 ? "外資動向:持股比率下降" : "外資動向:持股比率持平";
+    fText = `外資持股比率從 ${first.toFixed(2)}% 變化到 ${last.toFixed(2)}%(區間內${diff >= 0 ? "上升" : "下降"} ${Math.abs(diff).toFixed(2)} 個百分點)。`
+      + (investable !== null && investable !== undefined ? ` 目前尚可投資空間約 ${investable.toFixed(2)}%。` : "");
+  }
+
+  const verdicts = [
+    { tag: chipTag, title: chipTitle, text: chipText },
+    { tag: techTag, title: techTitle, text: techText },
+    { tag: valTag, title: valTitle, text: valText },
+    { tag: fTag, title: fTitle, text: fText },
+  ];
+
+  const tagLabel = { bull: "偏多", bear: "偏空", neutral: "中性" };
+
+  verdicts.forEach(v => {
+    const div = document.createElement("div");
+    div.className = "verdict";
+    div.innerHTML = `
+      <div class="verdict-head">
+        <span class="title">${v.title}</span>
+        <span class="tag ${v.tag}">${tagLabel[v.tag]}</span>
+      </div>
+      <p>${v.text}</p>
+    `;
+    el.appendChild(div);
   });
 }
 
@@ -284,7 +351,7 @@ async function loadData() {
 
   const { data, error } = await client
     .from("daily_data")
-    .select("date, close_price, change_percent, foreign_net, trust_net, dealer_net, institutional_net")
+    .select("date, close_price, change_percent, open_price, high_price, low_price, pe_ratio, foreign_net, trust_net, dealer_net, institutional_net, foreign_holding_ratio, foreign_investable_ratio")
     .eq("symbol", currentSymbol)
     .eq("market", "TW")
     .gte("date", sinceStr)
@@ -296,8 +363,8 @@ async function loadData() {
   }
 
   statusEl.textContent = `${currentSymbol} 共 ${data.length} 筆資料`;
-  renderSummary(data || []);
-  renderCharts(data || []);
+  renderSnapshot(data || []);
+  renderVerdicts(data || []);
 }
 
 (async function init() {
